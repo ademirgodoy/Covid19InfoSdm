@@ -23,6 +23,12 @@ android {
         }
     }
 
+    /* Retrofit exige no minimo Java 8*/
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+
 }
 
 dependencies {
@@ -41,5 +47,8 @@ dependencies {
     implementation 'com.android.volley:volley:1.1.1'
     /* Gson */
     implementation 'com.google.code.gson:gson:2.8.6'
+    /* Retrofit */
+    implementation 'com.squareup.retrofit2:retrofit:2.8.1'
+    implementation 'com.squareup.retrofit2:converter-gson:2.8.1'
 
 }

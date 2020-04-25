@@ -11,10 +11,19 @@ import com.android.volley.toolbox.Volley
 import com.google.gson.Gson
 import com.google.gson.JsonArray
 import org.json.JSONArray
+import retrofit2.*
+import retrofit2.converter.gson.GsonConverterFactory
 
 class Covid19Service (val context: Context){
     private val requestQueue = Volley.newRequestQueue(context)
     private val gson = Gson()
+
+    /* Cria uma implementação da interface usando um objeto retrofit*/
+    private val retrofitServices = with (Retrofit.Builder()){
+        baseUrl(BASE_URL)
+        addConverterFactory(GsonConverterFactory.create())
+        build()
+    }.create(Covid19Api.RetrofitServices::class.java)
 
     /* Acesso a web service usando Volley*/
     fun callGetCountries(): MutableLiveData<CountryList> {
@@ -34,5 +43,30 @@ class Covid19Service (val context: Context){
 
         return countriesListLd
     }
+
+    /* Acesso a web service usando retrofic. Como os serviços retornam o mesmo tipo de resposta
+    * foram aglutinados nume mesma função
+    * */
+    fun callService (countryName: String, status: String, service: String): MutableLiveData<CaseList>{
+        val caseList: MutableLiveData<CaseList> = MutableLiveData()
+
+        /* Callback usado pelos servicos que retrnam o mesmo tipo de Json*/
+        val callback = object : Callback<CaseList>{
+            override fun onResponse(call: Call<CaseList>, response: Response<CaseList>) {
+                if (response.isSuccessful){
+                    caseList.value = response.body()
+                }
+            }
+
+            override fun onFailure(call: Call<CaseList>, t: Throwable) {
+                Log.e("Covid19InforSdm","Erro durante a execução do serviço")
+            }
+
+        }
+
+        return caseList
+    }
+
+
 
 }
