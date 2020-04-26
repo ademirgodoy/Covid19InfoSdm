@@ -1,13 +1,13 @@
 package br.com.ifsp.covid19infosdm
 
-import android.bluetooth.BluetoothAdapter
 import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
 import android.view.View
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
 import androidx.lifecycle.Observer
-import br.com.ifsp.covid19infosdm.model.CaseList
+//import br.com.ifsp.covid19infosdm.model.CaseList
+import br.com.ifsp.covid19infosdm.model.dataclass.*
 import br.com.ifsp.covid19infosdm.viewmodel.Covid19ViewModel
 import com.jjoe64.graphview.helper.DateAsXAxisLabelFormatter
 import com.jjoe64.graphview.series.DataPoint
@@ -19,6 +19,7 @@ import java.util.*
 class MainActivity : AppCompatActivity() {
     private lateinit var viewModel: Covid19ViewModel
     private lateinit var countryAdapter: ArrayAdapter<String>
+    private lateinit var countryNameSlugMap: MutableMap<String, String>
 
     /* Classe para os serviços que serão acessados */
     private enum class Information (val type:String){
@@ -26,7 +27,7 @@ class MainActivity : AppCompatActivity() {
         BY_COUNTRY("By country")
     }
 
-    /* Classe para status que será buscado no serviço */
+    /* Classe para o status que será buscado no serviço */
     private enum class Status(val type: String){
         CONFIRMED ("Confirmed"),
         RECOVERED ("Recovered"),
@@ -55,13 +56,15 @@ class MainActivity : AppCompatActivity() {
     private fun countryAdapterInit(){
         /* Preenchido por Webservice*/
         countryAdapter = ArrayAdapter<String>(this, android.R.layout.simple_list_item_1)
+        countryNameSlugMap = mutableMapOf()
         paisSP.adapter = countryAdapter
         viewModel.fetchCountries().observe(
             this,
             Observer { countryList ->
-                countryList.forEach{ countryListItem ->
-                    if (countryListItem.country.isNotEmpty()){
+                countryList.sortedBy { it.country }.forEach { countryListItem ->
+                    if ( countryListItem.country.isNotEmpty()) {
                         countryAdapter.add(countryListItem.country)
+                        countryNameSlugMap[countryListItem.country] = countryListItem.slug
                     }
                 }
 
@@ -75,24 +78,17 @@ class MainActivity : AppCompatActivity() {
 
         informacaoSP.adapter = ArrayAdapter(this,android.R.layout.simple_list_item_1, informationList)
         informacaoSP.onItemSelectedListener = object: AdapterView.OnItemSelectedListener{
-            override fun onNothingSelected(parent: AdapterView<*>?) {
-                TODO("Not yet implemented")
-            }
-
-            override fun onItemSelected(
-                parent: AdapterView<*>?,
-                view: View?,
-                position: Int,
-                id: Long
-            ) {
+            override fun onNothingSelected(parent: AdapterView<*>?) {}
+            // A nova versão dos serviços alterou a forma como dispomos os dados
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
                 when (position){
                     Information.DAY_ONE.ordinal -> {
-                        modoVisualTV.visibility = View.GONE
-                        modoRG.visibility = View.GONE
-                    }
-                    Information.BY_COUNTRY.ordinal -> {
                         modoVisualTV.visibility = View.VISIBLE
                         modoRG.visibility = View.VISIBLE
+                    }
+                    Information.BY_COUNTRY.ordinal -> {
+                        modoVisualTV.visibility = View.GONE
+                        modoRG.visibility = View.GONE
                     }
                 }
             }
@@ -107,33 +103,25 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun fetchDayOne(){
-        ModoGrafico(ligado=false)
-        viewModel.fetchDayOne(paisSP.selectedItem.toString(), statusSP.selectedItem.toString()).observe(
-            this,
-            Observer {casesList ->
-                resultadoTV.text = casesListToString(casesList)
-            }
-        )
-    }
+        val countrySlug = countryNameSlugMap[paisSP.selectedItem.toString()]!!
 
-    private fun fetchByCountry(){
-        viewModel.fetchByCountry(paisSP.selectedItem.toString(), statusSP.selectedItem.toString()).observe(
+        viewModel.fetchDayOne(countrySlug, statusSP.selectedItem.toString()).observe(
             this,
-            Observer {casesList ->
-                if(textoRB.isChecked){
+            Observer { casesList ->
+                if (textoRB.isChecked) {
                     /* Modo texto */
                     ModoGrafico(ligado = false)
                     resultadoTV.text = casesListToString(casesList)
                 }
-                else{
-                    /* Modo Grafico */
+                else {
+                    /* Modo gráfico */
                     ModoGrafico(ligado = true)
                     resultadoGV.removeAllSeries()
                     resultadoGV.gridLabelRenderer.resetStyles()
 
-                    /* Preparando Pontos*/
+                    /* Preparando pontos */
                     val pointsArrayList = arrayListOf<DataPoint>()
-                    casesList.forEach{
+                    casesList.forEach {
                         val date = SimpleDateFormat("yyyy-MM-dd", Locale.US).parse(it.date.substring(0,10))
                         val point = DataPoint(date, it.cases.toDouble())
                         pointsArrayList.add(point)
@@ -141,7 +129,7 @@ class MainActivity : AppCompatActivity() {
                     val pointsSeries = LineGraphSeries(pointsArrayList.toTypedArray())
                     resultadoGV.addSeries(pointsSeries)
 
-                    /* Formatando Gráficos*/
+                    /* Formatando gráfico */
                     resultadoGV.gridLabelRenderer.setHumanRounding(false)
                     resultadoGV.gridLabelRenderer.labelFormatter = DateAsXAxisLabelFormatter(this)
 
@@ -161,6 +149,18 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
+    private fun fetchByCountry() {
+        val countrySlug = countryNameSlugMap[paisSP.selectedItem.toString()]!!
+
+        ModoGrafico(ligado = false)
+        viewModel.fetchByCountry(countrySlug, statusSP.selectedItem.toString()).observe(
+            this,
+            Observer { casesList ->
+                resultadoTV.text = casesListToString(casesList)
+            }
+        )
+    }
+
     private fun ModoGrafico(ligado:Boolean){
         if(ligado){
             resultadoTV.visibility = View.GONE
@@ -172,17 +172,34 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun casesListToString(caseList: CaseList):String {
-        var resultadoSb = StringBuffer()
-        caseList.forEach{
-            resultadoSb.append("Pais: ${it.country}\n")
-            if (it.countryCode.isNotEmpty()){
-                resultadoSb.append("Sigla: ${it.countryCode}\n")
+    private inline fun <reified  T: ArrayList<*>> casesListToString(responseList: T): String {
+        val resultSb = StringBuffer()
+
+        // Usando class.java para não ter que adicionar biblioteca de reflexão Kotlin
+        responseList.forEach {
+            when(T::class.java) {
+                DayOneResponseList::class.java -> {
+                    with (it as DayOneResponseListItem) {
+                        resultSb.append("Casos: ${this.cases}\n")
+                        resultSb.append("Data: ${this.date.substring(0,10)}\n\n")
+                    }
+                }
+                ByCountryResponseList::class.java -> {
+                    with (it as ByCountryResponseListItem) {
+                        this.province.takeIf { !this.province.isNullOrEmpty() }?.let { province ->
+                            resultSb.append("Estado/Província: ${province}\n")
+                        }
+                        this.city.takeIf { !this.city.isNullOrEmpty() }?.let { city ->
+                            resultSb.append("Cidade: ${city}\n")
+                        }
+
+                        resultSb.append("Casos: ${this.cases}\n")
+                        resultSb.append("Data: ${this.date.substring(0,10)}\n\n")
+                    }
+                }
             }
-            resultadoSb.append("Data: ${it.date.substring(0,10)}\n")
-            resultadoSb.append("Casos: ${it.cases}\n")
         }
 
-        return resultadoSb.toString()
+        return resultSb.toString()
     }
 }

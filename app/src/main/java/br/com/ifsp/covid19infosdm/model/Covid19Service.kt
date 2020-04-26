@@ -3,15 +3,20 @@ package br.com.ifsp.covid19infosdm.model
 import android.content.Context
 import android.util.Log
 import androidx.lifecycle.MutableLiveData
+import br.com.ifsp.covid19infosdm.R
 import br.com.ifsp.covid19infosdm.model.Covid19Api.BASE_URL
 import br.com.ifsp.covid19infosdm.model.Covid19Api.COUNTRIES_ENDPOINT
+import br.com.ifsp.covid19infosdm.model.dataclass.ByCountryResponseList
+import br.com.ifsp.covid19infosdm.model.dataclass.DayOneResponseList
+import br.com.ifsp.covid19infosdm.model.dataclass.CountryList
 import com.android.volley.Request
 import com.android.volley.toolbox.JsonArrayRequest
 import com.android.volley.toolbox.Volley
 import com.google.gson.Gson
-import com.google.gson.JsonArray
-import org.json.JSONArray
-import retrofit2.*
+import retrofit2.Call
+import retrofit2.Callback
+import retrofit2.Response
+import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 
 class Covid19Service (val context: Context){
@@ -36,7 +41,7 @@ class Covid19Service (val context: Context){
             { countriesList ->
                 countriesListLd.value = gson.fromJson(countriesList.toString(),CountryList::class.java)
             },
-            {error -> Log.e("Covid19InfoSdm","${error.message}")}
+            { error ->  Log.e(context.getString(R.string.app_name), "${error.message}")}
         )
 
         requestQueue.add(request)
@@ -44,29 +49,35 @@ class Covid19Service (val context: Context){
         return countriesListLd
     }
 
-    /* Acesso a web service usando retrofic. Como os serviços retornam o mesmo tipo de resposta
-    * foram aglutinados nume mesma função
-    * */
-    fun callService (countryName: String, status: String, service: String): MutableLiveData<CaseList>{
-        val caseList: MutableLiveData<CaseList> = MutableLiveData()
+    /* Acesso a Web Service usando Retrofit. Como os serviços retornam o mesmo tipo de resposta
+    * foram aglutinados numa mesma função */
+    fun <T> callService(countryName: String, status: String, tipoResposta: Class<T>): MutableLiveData<T> {
+        val responseList = MutableLiveData<T>()
 
-        /* Callback usado pelos servicos que retrnam o mesmo tipo de Json*/
-        val callback = object : Callback<CaseList>{
-            override fun onResponse(call: Call<CaseList>, response: Response<CaseList>) {
+        /* Callback usado pelos serviços que retornam JSON */
+        val callback = object: Callback<T> {
+            override fun onResponse(call: Call<T>, response: Response<T>) {
                 if (response.isSuccessful){
-                    caseList.value = response.body()
+                    responseList.value = response.body()
                 }
             }
-
-            override fun onFailure(call: Call<CaseList>, t: Throwable) {
-                Log.e("Covid19InforSdm","Erro durante a execução do serviço")
+            override fun onFailure(call: Call<T>, t: Throwable) {
+                Log.e(context.getString(R.string.app_name), "Falha no acesso ao serviço")
             }
-
         }
 
-        return caseList
+        /* O Serviço correto é chamado */
+        when (tipoResposta) {
+             DayOneResponseList::class.java -> {
+                @Suppress("UNCHECKED_CAST")
+                retrofitServices.getDayOne(countryName, status).enqueue(callback as Callback<DayOneResponseList>)
+            }
+            ByCountryResponseList::class.java -> {
+                @Suppress("UNCHECKED_CAST")
+                retrofitServices.getByCountry(countryName, status).enqueue(callback as Callback<ByCountryResponseList>)
+            }
+        }
+
+        return responseList
     }
-
-
-
 }
